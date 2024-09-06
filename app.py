@@ -1,4 +1,6 @@
+# # ye with categories han and without lables . seprate file
 from flask import Flask, request, jsonify
+import os
 import numpy as np
 import cv2
 import mediapipe as mp
@@ -6,13 +8,12 @@ import torch
 import time
 from flask_cors import CORS
 import logging
-import os
-import tempfile
 from categories import initialized_categories, device  # Importing from categories.py
+
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
-CORS(app, resources={r"/upload-video": {"origins": "*"}})  # Allow all origins for this route
+CORS(app)
 
 # Mediapipe Holistic model initialization
 mp_holistic = mp.solutions.holistic
@@ -35,18 +36,9 @@ def extract_keypoints(results):
                    for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
     return np.concatenate([pose, face, lh, rh])
 
-def process_video_file(file_obj, sequence_length=30, fps=10):
-    # Create a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_video:
-        file_path = temp_video.name
-        file_obj.save(file_path)  # Save the uploaded video to this temporary file
-        print(f"Saved video to temporary file: {file_path}")
-    
-    cap = cv2.VideoCapture(file_path)
-    if not cap.isOpened():
-        print("Error: Could not open video file.")
-        return None
-
+def process_video_file(video_path, sequence_length=30, fps=10):
+    print(f"Processing video: {video_path}")
+    cap = cv2.VideoCapture(video_path)
     video_fps = cap.get(cv2.CAP_PROP_FPS)
 
     keypoints_sequence = []
@@ -85,11 +77,6 @@ def process_video_file(file_obj, sequence_length=30, fps=10):
             print(f"Padded sequence to {sequence_length} frames.")
 
         print(f"Successfully processed {len(keypoints_sequence)} frames.")
-        
-        # Remove the temporary file after processing
-        os.remove(file_path)
-        print(f"Temporary file {file_path} deleted.")
-        
         return np.array(keypoints_sequence)
 
 def predict(model, scaler, video_sequence, actions):
@@ -135,10 +122,13 @@ def upload_video():
         print(f"Request ID {request_id}: No video selected for uploading.")
         return jsonify({"message": "No video selected for uploading"}), 400
 
-    print(f"Request ID {request_id}: Video file received.")
+    # Save the video file
+    video_path = os.path.join('videos', video.filename)
+    video.save(video_path)
+    print(f"Request ID {request_id}: Video saved to: {video_path}")
 
     # Process the video and make a prediction
-    keypoints_sequence = process_video_file(video)
+    keypoints_sequence = process_video_file(video_path)
 
     if keypoints_sequence is not None:
         category_data = initialized_categories[category]
@@ -158,8 +148,10 @@ def upload_video():
         return jsonify({
             "message": "Prediction could not be made due to insufficient data."
         }), 400
-# if __name__ == "__main__":
-#     if not os.path.exists('videos'):
-#         os.makedirs('videos')
-#     print("Starting Flask server...")
-#     app.run(debug=True)
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Default to 5000 if PORT not set
+    app.run(host="0.0.0.0", port=port)
+
+
