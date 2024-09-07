@@ -1,30 +1,31 @@
+
+
+
+
+# ye without download wala han 
 import torch
 import torch.nn as nn
 import joblib
 
-# Define the Transformer model
+# Part 6: Transformer Model with LSTM in Ensemble
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class TransformerModel(nn.Module):
-    def __init__(self, input_dim, num_classes, nhead=6, num_layers=3, d_model=512, dropout=0.3):
+    def __init__(self, input_dim, num_classes, nhead=8, num_layers=4, d_model=768, dropout=0.3):
         super(TransformerModel, self).__init__()
-        self.fc1 = nn.Linear(input_dim, d_model)
-        self.transformer = nn.Transformer(
-            d_model=d_model,
-            nhead=nhead,
-            num_encoder_layers=num_layers,
-            dropout=dropout
-        )
+        self.fc1 = nn.Linear(input_dim, d_model)  # Project input to d_model dimension
+        self.layer_norm = nn.LayerNorm(d_model)   # Add layer normalization
+        self.transformer = nn.Transformer(d_model=d_model, nhead=nhead, num_encoder_layers=num_layers, num_decoder_layers=num_layers, dropout=dropout)
         self.fc2 = nn.Linear(d_model, num_classes)
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = x.permute(1, 0, 2)
+        x = self.fc1(x.to(device))  # Project input to d_model dimension and ensure it's on the correct device
+        x = self.layer_norm(x)  # Apply layer normalization
+        x = x.permute(1, 0, 2)  # Transformer expects (S, N, E)
         output = self.transformer(x, x)
         output = output.mean(dim=0)
         output = self.fc2(output)
         return output
 
-
-# Define the LSTM model
 class LSTMModel(nn.Module):
     def __init__(self, input_dim, num_classes, hidden_dim=512, num_layers=3, dropout=0.3):
         super(LSTMModel, self).__init__()
@@ -32,13 +33,11 @@ class LSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_dim, num_classes)
 
     def forward(self, x):
-        x, _ = self.lstm(x)
+        x, _ = self.lstm(x.to(device))
         x = x[:, -1, :]  # Take the output of the last time step
         x = self.fc(x)
         return x
 
-
-# Define the Ensemble Model
 class EnsembleModel(nn.Module):
     def __init__(self, transformer_model, lstm_model, num_classes):
         super(EnsembleModel, self).__init__()
@@ -53,11 +52,6 @@ class EnsembleModel(nn.Module):
         output = self.fc(combined_output)
         return output
 
-
-# Device configuration
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 # Function to load model and scaler
 def load_model_and_scaler(model_path, scaler_path, num_classes):
     # Instantiate the Transformer and LSTM models
@@ -66,7 +60,7 @@ def load_model_and_scaler(model_path, scaler_path, num_classes):
         num_classes=num_classes,
         nhead=8,
         num_layers=4,
-        d_model=512,
+        d_model=768,
         dropout=0.3
     ).to(device)
 
@@ -77,6 +71,7 @@ def load_model_and_scaler(model_path, scaler_path, num_classes):
         num_layers=3,
         dropout=0.3
     ).to(device)
+
 
     # Instantiate the Ensemble model with both Transformer and LSTM models
     model = EnsembleModel(
@@ -158,3 +153,110 @@ initialized_categories = initialize_categories()
 
 
 
+# just transformer
+# import torch
+# import torch.nn as nn
+# import joblib
+
+# # Define the Transformer model
+# class TransformerModel(nn.Module):
+#     def __init__(self, input_dim, num_classes, nhead=6, num_layers=3, d_model=512, dropout=0.3):
+#         super(TransformerModel, self).__init__()
+#         self.fc1 = nn.Linear(input_dim, d_model)
+#         self.transformer = nn.Transformer(
+#             d_model=d_model,
+#             nhead=nhead,
+#             num_encoder_layers=num_layers,
+#             dropout=dropout
+#         )
+#         self.fc2 = nn.Linear(d_model, num_classes)
+
+#     def forward(self, x):
+#         x = self.fc1(x)
+#         x = x.permute(1, 0, 2)
+#         output = self.transformer(x, x)
+#         output = output.mean(dim=0)
+#         output = self.fc2(output)
+#         return output
+
+
+# # Device configuration
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# # # Function to load model and scaler
+# def load_model_and_scaler(model_path, scaler_path, num_classes):
+#     # Load the model
+#     model = TransformerModel(
+#         input_dim=1662,
+#         num_classes=num_classes,
+#         nhead=8,
+#         num_layers=4,
+#         d_model=512,
+#         dropout=0.3
+#     ).to(device)
+#     model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
+
+#     model.eval()
+    
+#     # Load the scaler
+#     scaler = joblib.load(scaler_path)
+    
+#     return model, scaler
+
+# # Define all categories
+# categories = {
+#     'greeting': {
+#         'model_path': 'model_greetings70.pth',
+#         'scaler_path': 'greetingscaler.pkl',
+#         'actions': [
+#             "السلام وعلیکم",
+#             "صبح بخیر",
+#             "ایک اچھا دن گزاریں",
+#             "بعد میں ملتے ہیں",
+#             "خوش آمدید"
+#         ]
+#     },
+#     'daily_routine': {
+#         'model_path': 'model_everyday70.pth',
+#         'scaler_path': 'everydaycaler.pkl',
+#         'actions': [
+#             "ایمبولینس کو کال کریں",
+#             "کیا میں آپ کا حکم لے سکتا ہوں؟",
+#             "میں بیمار ہوں",
+#             "میں نے پوری رات مطالعہ کیا",
+#             "چلو ایک ریستوراں میں چلو"
+#         ]
+#     },
+#     'question': {
+#         'model_path': 'model_question70.pth',
+#         'scaler_path': 'questionscaler.pkl',
+#         'actions': [
+#             "کیا تم بھوکے ہو؟",
+#             "آپ کیسے ہیں؟",
+#             "اس کی کیا قیمت ہے؟",
+#             "میں نہیں سمجھا",
+#             "آپ کا ٹیلیفون نمبر کیا ہے؟"
+#         ]
+#     }
+# }
+
+# # Initialize models and scalers for all categories
+# def initialize_categories():
+#     initialized_categories = {}
+#     for category_name, data in categories.items():
+#         # print(f"Loading model and scaler for category: {category_name}")
+#         model, scaler = load_model_and_scaler(
+#             model_path=data['model_path'],
+#             scaler_path=data['scaler_path'],
+#             num_classes=len(data['actions'])
+#         )
+#         initialized_categories[category_name] = {
+#             'model': model,
+#             'scaler': scaler,
+#             'actions': data['actions']
+#         }
+#     return initialized_categories
+
+# # Initialize and store in a variable
+# initialized_categories = initialize_categories()
